@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🎵 Playlist Collaborativa</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <header>
+    <h1>🎵 Playlist Collaborativa</h1>
+    <p class="subtitle">Aggiungi, vota e scopri le canzoni del gruppo</p>
+  </header>
+
+  <main>
+
+    <!-- ── AGGIUNGI CANZONE ── -->
+    <section class="card" id="section-add">
+      <h2>➕ Aggiungi una canzone</h2>
+      <div class="form-row">
+        <input type="text" id="input-title"  placeholder="Titolo *" />
+        <input type="text" id="input-artist" placeholder="Artista *" />
+        <input type="text" id="input-genre"  placeholder="Genere (opzionale)" />
+        <button id="btn-add" onclick="addSong()">Aggiungi</button>
+      </div>
+      <p id="msg-add" class="msg"></p>
+    </section>
+
+    <!-- ── CERCA ── -->
+    <section class="card" id="section-search">
+      <h2>🔍 Cerca</h2>
+      <div class="form-row">
+        <input type="text" id="input-search" placeholder="Cerca per titolo o artista..." />
+        <button onclick="searchSongs()">Cerca</button>
+        <button onclick="loadPlaylist()">Mostra tutte</button>
+      </div>
+    </section>
+
+    <!-- ── MODIFICA CANZONE ── -->
+    <section class="card" id="section-edit" style="display:none;">
+      <h2>✏️ Modifica canzone</h2>
+      <div class="form-row">
+        <input type="text" id="edit-title"  placeholder="Nuovo titolo" />
+        <input type="text" id="edit-artist" placeholder="Nuovo artista" />
+        <input type="text" id="edit-genre"  placeholder="Nuovo genere" />
+        <button onclick="confirmEdit()">Salva</button>
+        <button onclick="cancelEdit()">Annulla</button>
+      </div>
+      <p id="msg-edit" class="msg"></p>
+    </section>
+
+    <!-- ── CLASSIFICA ── -->
+    <section class="card">
+      <h2>🏆 Classifica</h2>
+      <div id="playlist-container">
+        <p class="loading">Caricamento in corso...</p>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    <p>Aggiornamento automatico ogni 10 secondi &nbsp;|&nbsp; Progetto PCTO 2025-26</p>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
