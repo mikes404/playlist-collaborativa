@@ -42,5 +42,3 @@ playlist-collaborativa/
 | POST | `login.php?action=register` | Registrazione |
 | POST | `login.php?action=login` | Login |
 | POST | `login.php?action=logout` | Logout |
-
-*Solo l'autore originale può modificare/eliminare i propri contenuti.
