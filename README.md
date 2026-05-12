@@ -1,7 +1,7 @@
 # 🎵 Playlist Collaborativa
 
 Applicazione web collaborativa per gestire una playlist musicale con sistema di voti.  
-Progetto PCTO – Classe 5ª – a.s. 2025/26
+Progetto TPSIT – Classe 5ª DSB– a.s. 2026/27
 
 ---
 
@@ -21,14 +21,6 @@ playlist-collaborativa/
 
 ---
 
-## 🚀 Deploy sul server della scuola
-
-1. Copia la cartella `frontend/` e il file `backend/api.php` sul server
-2. Metti `index.html` e `api.php` nella **stessa cartella**  
-   (oppure aggiorna la variabile `API` in `script.js`)
-3. Il database MongoDB è già configurato su `10.10.13.2:27017`
-
----
 
 ## 🔌 Endpoint API
 
@@ -44,20 +36,3 @@ playlist-collaborativa/
 
 ---
 
-## 👥 Divisione del lavoro
-
-| Ruolo | Compiti |
-|-------|---------|
-| Backend PHP | `api.php` — endpoint GET, POST, PUT, DELETE |
-| Logica voti | upvote/downvote, score, anti-doppio voto |
-| Frontend XHR | `index.html`, `style.css`, `script.js` |
-| Testing & Docs | Postman, README, relazione PDF, slide |
-
----
-
-## 🛠️ Tecnologie
-
-- **Backend**: PHP 8+ con driver MongoDB nativo
-- **Frontend**: HTML5, CSS3, JavaScript (solo XHR)
-- **Database**: MongoDB su server scuola (`10.10.13.2:27017`)
-- **Versionamento**: Git + GitHub

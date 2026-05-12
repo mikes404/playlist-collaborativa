@@ -1,263 +1,194 @@
 <?php
 // ─────────────────────────────────────────────────────────────
-// api.php  –  Backend REST per Playlist Collaborativa
-// Tutti gli endpoint sono gestiti da questo file unico.
-//
-// ENDPOINT:
-//   GET    api.php?action=list
-//   GET    api.php?action=search&q=...
-//   POST   api.php?action=add
-//   PUT    api.php?action=update&id=...
-//   DELETE api.php?action=delete&id=...
-//   POST   api.php?action=upvote&id=...
-//   POST   api.php?action=downvote&id=...
+// api.php  –  BeatVote  –  API REST canzoni
 // ─────────────────────────────────────────────────────────────
+
+session_start();
 
 header('Content-Type: application/json; charset=UTF-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 
-// Risponde subito alle richieste OPTIONS (preflight CORS)
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(200);
-    exit;
-}
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit; }
 
-// ── Configurazione MongoDB ────────────────────────────────────
+// ── Config MongoDB ────────────────────────────────────────────
 define('MONGO_URI',  'mongodb://10.10.13.2:27017');
 define('DB_NAME',    'playlistDB');
 define('COLLECTION', 'songs');
 
-// ── Connessione ───────────────────────────────────────────────
-try {
-    $manager = new MongoDB\Driver\Manager(MONGO_URI);
-} catch (Exception $e) {
-    sendError(500, 'Connessione al database fallita: ' . $e->getMessage());
-}
-
-// ── Legge il body JSON (per POST/PUT) ────────────────────────
-$body = [];
-$rawBody = file_get_contents('php://input');
-if (!empty($rawBody)) {
-    $body = json_decode($rawBody, true) ?? [];
-}
-
 // ── Routing ───────────────────────────────────────────────────
 $action = $_GET['action'] ?? '';
 $id     = $_GET['id']     ?? '';
-$method = $_SERVER['REQUEST_METHOD'];
+
+// Azioni che richiedono login
+$protected = ['add','update','delete','upvote','downvote'];
+if (in_array($action, $protected) && !isset($_SESSION['user'])) {
+    http_response_code(401);
+    echo json_encode(['error' => 'Devi essere loggato']);
+    exit;
+}
+
+// ── Connessione MongoDB ───────────────────────────────────────
+try {
+    $manager = new MongoDB\Driver\Manager(MONGO_URI);
+} catch (Exception $e) {
+    http_response_code(500);
+    echo json_encode(['error' => 'MongoDB non raggiungibile']);
+    exit;
+}
+
+// ── Body JSON ─────────────────────────────────────────────────
+$body = json_decode(file_get_contents('php://input'), true) ?? [];
+
+// ── Username dalla sessione (per azioni protette) ─────────────
+$me = $_SESSION['user'] ?? '';
 
 switch ($action) {
 
     // ── GET list ──────────────────────────────────────────────
     case 'list':
-        requireMethod('GET');
-        $options = ['sort' => ['score' => -1]];
-        $songs   = runQuery([], $options);
-        echo json_encode($songs, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        $songs = runQuery([], ['sort' => ['score' => -1]]);
+        echo json_encode($songs, JSON_UNESCAPED_UNICODE);
         break;
 
     // ── GET search ────────────────────────────────────────────
     case 'search':
-        requireMethod('GET');
         $q = $_GET['q'] ?? '';
-        if ($q === '') {
-            $filter = [];
-        } else {
-            $filter = [
-                '$or' => [
-                    ['title'  => ['$regex' => $q, '$options' => 'i']],
-                    ['artist' => ['$regex' => $q, '$options' => 'i']],
-                ]
-            ];
-        }
-        $songs = runQuery($filter, ['sort' => ['score' => -1]]);
-        echo json_encode($songs, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        $filter = $q === '' ? [] : ['$or' => [
+            ['title'  => ['$regex' => $q, '$options' => 'i']],
+            ['artist' => ['$regex' => $q, '$options' => 'i']],
+        ]];
+        echo json_encode(runQuery($filter, ['sort' => ['score' => -1]]), JSON_UNESCAPED_UNICODE);
         break;
 
     // ── POST add ──────────────────────────────────────────────
     case 'add':
-        requireMethod('POST');
         $title  = trim($body['title']  ?? '');
         $artist = trim($body['artist'] ?? '');
         $genre  = trim($body['genre']  ?? '');
+        if ($title === '' || $artist === '') { err(400, 'Titolo e artista obbligatori'); }
 
-        if ($title === '' || $artist === '') {
-            sendError(400, 'title e artist sono obbligatori');
-        }
-
-        $newSong = [
+        $doc = [
             'title'     => $title,
             'artist'    => $artist,
             'genre'     => $genre,
+            'addedBy'   => $me,
             'upvotes'   => [],
             'downvotes' => [],
             'score'     => 0,
+            'comments'  => [],
             'createdAt' => date('c'),
         ];
-
         $bulk = new MongoDB\Driver\BulkWrite();
-        $insertedId = $bulk->insert($newSong);
-        $manager->executeBulkWrite(DB_NAME . '.' . COLLECTION, $bulk);
-
-        $newSong['_id'] = (string) $insertedId;
+        $oid  = $bulk->insert($doc);
+        $manager->executeBulkWrite(DB_NAME.'.'.COLLECTION, $bulk);
+        $doc['_id'] = (string)$oid;
         http_response_code(201);
-        echo json_encode($newSong, JSON_UNESCAPED_UNICODE);
+        echo json_encode($doc, JSON_UNESCAPED_UNICODE);
         break;
 
     // ── PUT update ────────────────────────────────────────────
     case 'update':
-        requireMethod('PUT');
-        if ($id === '') sendError(400, 'ID mancante');
+        $oid  = getOid($id);
+        $song = getSong($oid);
+        if ($song['addedBy'] !== $me) { err(403, 'Non puoi modificare questa canzone'); }
 
-        $updateFields = [];
-        if (!empty($body['title']))             $updateFields['title']  = trim($body['title']);
-        if (!empty($body['artist']))            $updateFields['artist'] = trim($body['artist']);
-        if (isset($body['genre']))              $updateFields['genre']  = trim($body['genre']);
-
-        if (empty($updateFields)) sendError(400, 'Nessun campo da aggiornare');
-
-        try {
-            $filter = ['_id' => new MongoDB\BSON\ObjectId($id)];
-        } catch (Exception $e) {
-            sendError(400, 'ID non valido');
-        }
+        $fields = [];
+        if (!empty($body['title']))  $fields['title']  = trim($body['title']);
+        if (!empty($body['artist'])) $fields['artist'] = trim($body['artist']);
+        if (isset($body['genre']))   $fields['genre']  = trim($body['genre']);
+        if (empty($fields))          { err(400, 'Nessun campo da aggiornare'); }
 
         $bulk = new MongoDB\Driver\BulkWrite();
-        $bulk->update($filter, ['$set' => $updateFields]);
-        $result = $manager->executeBulkWrite(DB_NAME . '.' . COLLECTION, $bulk);
-
-        if ($result->getMatchedCount() === 0) sendError(404, 'Canzone non trovata');
-        echo json_encode(['message' => 'Canzone aggiornata']);
+        $bulk->update(['_id' => $oid], ['$set' => $fields]);
+        $manager->executeBulkWrite(DB_NAME.'.'.COLLECTION, $bulk);
+        echo json_encode(['message' => 'Aggiornato']);
         break;
 
     // ── DELETE delete ─────────────────────────────────────────
     case 'delete':
-        requireMethod('DELETE');
-        if ($id === '') sendError(400, 'ID mancante');
-
-        try {
-            $filter = ['_id' => new MongoDB\BSON\ObjectId($id)];
-        } catch (Exception $e) {
-            sendError(400, 'ID non valido');
-        }
+        $oid  = getOid($id);
+        $song = getSong($oid);
+        if ($song['addedBy'] !== $me) { err(403, 'Non puoi eliminare questa canzone'); }
 
         $bulk = new MongoDB\Driver\BulkWrite();
-        $bulk->delete($filter, ['limit' => 1]);
-        $result = $manager->executeBulkWrite(DB_NAME . '.' . COLLECTION, $bulk);
-
-        if ($result->getDeletedCount() === 0) sendError(404, 'Canzone non trovata');
-        echo json_encode(['message' => 'Canzone eliminata con successo']);
+        $bulk->delete(['_id' => $oid], ['limit' => 1]);
+        $manager->executeBulkWrite(DB_NAME.'.'.COLLECTION, $bulk);
+        echo json_encode(['message' => 'Eliminata']);
         break;
 
-    // ── POST upvote ───────────────────────────────────────────
+    // ── POST upvote / downvote ────────────────────────────────
     case 'upvote':
-        requireMethod('POST');
-        handleVote($id, $body['userId'] ?? 'anonymous', 'up');
-        break;
-
-    // ── POST downvote ─────────────────────────────────────────
     case 'downvote':
-        requireMethod('POST');
-        handleVote($id, $body['userId'] ?? 'anonymous', 'down');
+        $oid  = getOid($id);
+        $song = getSong($oid);
+        $ups  = $song['upvotes']   ?? [];
+        $dns  = $song['downvotes'] ?? [];
+        $type = $action === 'upvote' ? 'up' : 'down';
+
+        if ($type === 'up') {
+            if (in_array($me, $ups, true)) {
+                $newUps = array_values(array_filter($ups, fn($u) => $u !== $me));
+                $newDns = $dns;
+            } else {
+                $newDns = array_values(array_filter($dns, fn($u) => $u !== $me));
+                $newUps = array_merge($ups, [$me]);
+            }
+        } else {
+            if (in_array($me, $dns, true)) {
+                $newDns = array_values(array_filter($dns, fn($u) => $u !== $me));
+                $newUps = $ups;
+            } else {
+                $newUps = array_values(array_filter($ups, fn($u) => $u !== $me));
+                $newDns = array_merge($dns, [$me]);
+            }
+        }
+
+        $newScore = count($newUps) - count($newDns);
+        $bulk = new MongoDB\Driver\BulkWrite();
+        $bulk->update(['_id' => $oid], ['$set' => [
+            'upvotes'   => $newUps,
+            'downvotes' => $newDns,
+            'score'     => $newScore,
+        ]]);
+        $manager->executeBulkWrite(DB_NAME.'.'.COLLECTION, $bulk);
+        echo json_encode(['message' => 'Voto registrato']);
         break;
 
     default:
-        sendError(404, 'Endpoint non trovato. Usa ?action=list|search|add|update|delete|upvote|downvote');
+        err(404, 'Endpoint non trovato');
 }
 
 // ─────────────────────────────────────────────────────────────
-// FUNZIONI HELPER
+// HELPER
 // ─────────────────────────────────────────────────────────────
+function getOid(string $id): MongoDB\BSON\ObjectId {
+    if ($id === '') err(400, 'ID mancante');
+    try { return new MongoDB\BSON\ObjectId($id); }
+    catch (Exception $e) { err(400, 'ID non valido'); }
+}
 
-/**
- * Gestisce upvote e downvote con logica anti-doppio voto.
- */
-function handleVote(string $id, string $userId, string $type): void {
-    global $manager;
-    if ($id === '') sendError(400, 'ID mancante');
-
-    try {
-        $oid = new MongoDB\BSON\ObjectId($id);
-    } catch (Exception $e) {
-        sendError(400, 'ID non valido');
-    }
-
-    // Leggi la canzone attuale
+function getSong(MongoDB\BSON\ObjectId $oid): array {
     $songs = runQuery(['_id' => $oid], []);
-    if (empty($songs)) sendError(404, 'Canzone non trovata');
-    $song = $songs[0];
-
-    $upvotes   = $song['upvotes']   ?? [];
-    $downvotes = $song['downvotes'] ?? [];
-
-    if ($type === 'up') {
-        if (in_array($userId, $upvotes, true)) {
-            sendError(400, 'Hai già messo upvote a questa canzone');
-        }
-        $hadDownvote = in_array($userId, $downvotes, true);
-        $newDownvotes = array_values(array_filter($downvotes, fn($u) => $u !== $userId));
-        $newUpvotes   = array_merge($upvotes, [$userId]);
-        $scoreChange  = $hadDownvote ? 2 : 1;
-    } else {
-        if (in_array($userId, $downvotes, true)) {
-            sendError(400, 'Hai già messo downvote a questa canzone');
-        }
-        $hadUpvote  = in_array($userId, $upvotes, true);
-        $newUpvotes   = array_values(array_filter($upvotes, fn($u) => $u !== $userId));
-        $newDownvotes = array_merge($downvotes, [$userId]);
-        $scoreChange  = $hadUpvote ? -2 : -1;
-    }
-
-    $bulk = new MongoDB\Driver\BulkWrite();
-    $bulk->update(
-        ['_id' => $oid],
-        [
-            '$set' => ['upvotes' => $newUpvotes, 'downvotes' => $newDownvotes],
-            '$inc' => ['score' => $scoreChange],
-        ]
-    );
-    $manager->executeBulkWrite(DB_NAME . '.' . COLLECTION, $bulk);
-
-    $label = $type === 'up' ? 'Upvote' : 'Downvote';
-    echo json_encode(['message' => $label . ' registrato']);
+    if (empty($songs)) err(404, 'Canzone non trovata');
+    return $songs[0];
 }
 
-/**
- * Esegue una query su MongoDB e restituisce un array di documenti.
- */
 function runQuery(array $filter, array $options): array {
     global $manager;
-    $query  = new MongoDB\Driver\Query($filter, $options);
-    $cursor = $manager->executeQuery(DB_NAME . '.' . COLLECTION, $query);
-
+    $cursor  = $manager->executeQuery(DB_NAME.'.'.COLLECTION, new MongoDB\Driver\Query($filter, $options));
     $results = [];
     foreach ($cursor as $doc) {
         $arr = json_decode(json_encode($doc), true);
-        // Converti ObjectId in stringa leggibile
-        if (isset($arr['_id']['$oid'])) {
-            $arr['_id'] = $arr['_id']['$oid'];
-        }
+        if (isset($arr['_id']['$oid'])) $arr['_id'] = $arr['_id']['$oid'];
         $results[] = $arr;
     }
     return $results;
 }
 
-/**
- * Verifica che il metodo HTTP sia quello atteso.
- */
-function requireMethod(string $expected): void {
-    if ($_SERVER['REQUEST_METHOD'] !== $expected) {
-        sendError(405, "Metodo non consentito. Usa $expected");
-    }
-}
-
-/**
- * Invia una risposta di errore JSON e termina lo script.
- */
-function sendError(int $code, string $message): never {
+function err(int $code, string $msg): never {
     http_response_code($code);
-    echo json_encode(['error' => $message], JSON_UNESCAPED_UNICODE);
+    echo json_encode(['error' => $msg], JSON_UNESCAPED_UNICODE);
     exit;
 }

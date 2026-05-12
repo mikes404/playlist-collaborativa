@@ -1,39 +1,47 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>🎵 Playlist Collaborativa</title>
-  <link rel="stylesheet" href="style.css" />
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>🎵 BeatVote</title>
+  <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
 
   <header>
-    <h1>🎵 Playlist Collaborativa</h1>
+    <h1>🎵 BeatVote</h1>
     <p class="subtitle">Aggiungi, vota e scopri le canzoni del gruppo</p>
+    <div class="user-bar">
+      <span id="current-user">👤</span>
+      <button onclick="logout()">Esci</button>
+    </div>
   </header>
 
   <main>
 
     <!-- ── AGGIUNGI CANZONE ── -->
-    <section class="card" id="section-add">
+    <section class="card">
       <h2>➕ Aggiungi una canzone</h2>
       <div class="form-row">
-        <input type="text" id="input-title"  placeholder="Titolo *" />
-        <input type="text" id="input-artist" placeholder="Artista *" />
-        <input type="text" id="input-genre"  placeholder="Genere (opzionale)" />
-        <button id="btn-add" onclick="addSong()">Aggiungi</button>
+        <input type="text" id="input-title"  placeholder="Titolo *"/>
+        <input type="text" id="input-artist" placeholder="Artista *"/>
+        <input type="text" id="input-genre"  placeholder="Genere (opzionale)"/>
+        <button onclick="addSong()">Aggiungi</button>
       </div>
       <p id="msg-add" class="msg"></p>
     </section>
 
     <!-- ── CERCA ── -->
-    <section class="card" id="section-search">
+    <section class="card">
       <h2>🔍 Cerca</h2>
       <div class="form-row">
-        <input type="text" id="input-search" placeholder="Cerca per titolo o artista..." />
+        <input type="text" id="input-search" placeholder="Cerca per titolo o artista..."
+               oninput="currentSearch = this.value.trim()"
+               onkeydown="if(event.key==='Enter') searchSongs()"
+               onfocus="typingInProgress=true"
+               onblur="typingInProgress=false"/>
         <button onclick="searchSongs()">Cerca</button>
-        <button onclick="loadPlaylist()">Mostra tutte</button>
+        <button onclick="resetSearch()">Mostra tutte</button>
       </div>
     </section>
 
@@ -41,9 +49,9 @@
     <section class="card" id="section-edit" style="display:none;">
       <h2>✏️ Modifica canzone</h2>
       <div class="form-row">
-        <input type="text" id="edit-title"  placeholder="Nuovo titolo" />
-        <input type="text" id="edit-artist" placeholder="Nuovo artista" />
-        <input type="text" id="edit-genre"  placeholder="Nuovo genere" />
+        <input type="text" id="edit-title"  placeholder="Nuovo titolo"/>
+        <input type="text" id="edit-artist" placeholder="Nuovo artista"/>
+        <input type="text" id="edit-genre"  placeholder="Nuovo genere"/>
         <button onclick="confirmEdit()">Salva</button>
         <button onclick="cancelEdit()">Annulla</button>
       </div>
@@ -61,7 +69,7 @@
   </main>
 
   <footer>
-    <p>Aggiornamento automatico ogni 10 secondi &nbsp;|&nbsp; Progetto PCTO 2025-26</p>
+    <p>BeatVote &nbsp;|&nbsp; Aggiornamento automatico ogni 2 secondi &nbsp;|&nbsp; Progetto TPSIT 2026-27</p>
   </footer>
 
   <script src="script.js"></script>
